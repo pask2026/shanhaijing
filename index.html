@@ -347,23 +347,6 @@
     nav{padding:12px 18px}nav a{margin-left:14px}
     .moon{right:18px;width:64px;height:64px}
   }
-  /* ===== 好感度系统 ===== */
-  .char-card{position:relative}
-  .favor-badge{position:absolute;top:10px;right:10px;padding:4px 10px;border-radius:20px;
-    background:rgba(255,95,143,.18);border:1px solid rgba(255,158,199,.5);color:var(--pink);
-    font-size:11px;font-weight:700;letter-spacing:1px;backdrop-filter:blur(4px);box-shadow:0 0 10px rgba(255,158,199,.25)}
-  .favor-box{margin-top:16px;padding:14px 16px;border:1px solid rgba(232,194,107,.28);
-    border-radius:14px;background:rgba(11,16,38,.55)}
-  .favor-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
-  .favor-title{font-size:13px;color:var(--gold);letter-spacing:2px}
-  .favor-title .heart{color:#ff5f8f;margin-right:2px}
-  .favor-rank{font-size:12px;color:var(--pink);font-weight:700;letter-spacing:2px;
-    text-shadow:0 0 8px rgba(255,158,199,.5)}
-  .favor-track{height:10px;border-radius:6px;background:rgba(232,194,107,.15);overflow:hidden}
-  .favor-fill{height:100%;width:0;border-radius:6px;
-    background:linear-gradient(90deg,#ff9ec7,#e8c26b);
-    box-shadow:0 0 10px rgba(255,158,199,.55);transition:width .5s ease}
-  .favor-num{margin-top:7px;font-size:11px;color:var(--muted);text-align:right;letter-spacing:1px}
   /* ===== 点击星光粒子 ===== */
   .sparkle{position:fixed;pointer-events:none;z-index:9999;font-size:15px;
     animation:sparkleUp 1s ease-out forwards;text-shadow:0 0 8px currentColor}
@@ -371,6 +354,18 @@
     0%{opacity:1;transform:translate(0,0) rotate(0deg) scale(.5)}
     100%{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--rot)) scale(1.3)}
   }
+  /* ===== 点击角色说悄悄话（气泡） ===== */
+  .char-card{position:relative}
+  .bubble{position:absolute;left:50%;top:20px;transform:translate(-50%,-10px) scale(.85);
+    max-width:82%;padding:10px 14px;border-radius:14px;background:rgba(22,29,63,.96);
+    border:1px solid rgba(232,194,107,.5);color:var(--moon);font-size:13px;line-height:1.6;
+    text-align:center;pointer-events:none;z-index:6;opacity:0;
+    box-shadow:0 8px 24px rgba(0,0,0,.45),0 0 16px rgba(232,194,107,.3);
+    transition:opacity .25s ease,transform .25s ease}
+  .bubble::after{content:'';position:absolute;bottom:-8px;left:50%;margin-left:-8px;
+    width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;
+    border-top:9px solid rgba(232,194,107,.5)}
+  .bubble.show{opacity:1;transform:translate(-50%,0) scale(1)}
 </style>
 </head>
 <body>
@@ -800,7 +795,6 @@
     CHARACTERS.forEach(c => {
       const card = document.createElement('div');
       card.className = 'char-card';
-      card.dataset.id = c.id;
       card.innerHTML =
         '<span class="no">词条 · ' + c.no + '</span>' +
         '<img class="photo" src="' + c.avatar + '" alt="' + c.name + '">' +
@@ -809,6 +803,10 @@
         '<div class="spec">' + c.species + '</div>' +
         '<div class="hint">翻开词条</div>';
       card.onclick = () => openDetail(c.id);
+      card.querySelector('.photo').addEventListener('click', e => {
+        e.stopPropagation();
+        bubbleSay(card, c);
+      });
       roster.appendChild(card);
     });
     const empty = document.createElement('div');
@@ -819,7 +817,6 @@
     document.getElementById('stat-count').textContent = CHARACTERS.length;
     document.getElementById('stat-img').textContent = imgs;
     document.getElementById('foot-count').textContent = CHARACTERS.length;
-    refreshBadges();
   }
 
   // 目录系统
@@ -1008,21 +1005,15 @@
         '<div class="radar-box">' + radarSVG(c.stats) + '</div>' +
         '<div class="stat-bars">' + statsRows(c.stats) + '</div></div>' : '') +
       '<div class="detail-gallery">' + gals + '</div>' +
-      '<div class="favor-box">' +
-        '<div class="favor-head"><span class="favor-title"><span class="heart">❤</span>好感度</span>' +
-          '<span class="favor-rank" id="favor-rank">' + favorRank(favorOf(c.id)) + '</span></div>' +
-        '<div class="favor-track"><div class="favor-fill" id="favor-fill" data-w="' + favorOf(c.id) + '"></div></div>' +
-        '<div class="favor-num" id="favor-num">' + favorOf(c.id) + ' / 100</div>' +
-      '</div>' +
       '<div class="interact">' +
-        '<p class="tip">— 点一点，和 ' + c.name + ' 说说话，好感 +3 —</p>' +
+        '<p class="tip">— 点一点，和 ' + c.name + ' 说说话 —</p>' +
         '<div>' + btns + '</div>' +
         '<div id="speech">点一下上面的按钮试试看</div>' +
       '</div>';
     modal.classList.add('open');
     // 数值条填充动画
     setTimeout(function(){
-      detail.querySelectorAll('.bar-fill, .favor-fill').forEach(function(el){
+      detail.querySelectorAll('.bar-fill').forEach(function(el){
         el.style.width = el.getAttribute('data-w') + '%';
       });
     }, 80);
@@ -1032,51 +1023,24 @@
     const sp = document.getElementById('speech');
     if (sp && current && current.lines[key]){
       sp.textContent = current.lines[key];
-      // 互动加好感 +3
-      const v = addFavor(current.id, 3);
-      const fill = document.getElementById('favor-fill');
-      const rank = document.getElementById('favor-rank');
-      const num = document.getElementById('favor-num');
-      if (fill) fill.style.width = v + '%';
-      if (rank) rank.textContent = favorRank(v);
-      if (num) num.textContent = v + ' / 100';
-      refreshBadges();
     }
   }
-  /* ===== 好感度系统 ===== */
-  const FAVOR_KEY = 'shj-favor-v1';
-  let favor = {};
-  try { favor = JSON.parse(localStorage.getItem(FAVOR_KEY)) || {}; } catch(e) { favor = {}; }
-  const FAVOR_LEVELS = [[0,'初识'],[20,'相熟'],[40,'亲密'],[60,'知己'],[80,'挚友'],[100,'契约']];
-  function favorOf(id){ return Math.min(100, favor[id] || 0); }
-  function favorRank(v){
-    let r = FAVOR_LEVELS[0][1];
-    FAVOR_LEVELS.forEach(function(l){ if (v >= l[0]) r = l[1]; });
-    return r;
-  }
-  function addFavor(id, n){
-    const v = Math.min(100, favorOf(id) + n);
-    favor[id] = v;
-    try { localStorage.setItem(FAVOR_KEY, JSON.stringify(favor)); } catch(e) {}
-    return v;
-  }
-  function refreshBadges(){
-    document.querySelectorAll('.char-card').forEach(function(card){
-      const id = card.dataset.id;
-      if (!id) return;
-      const v = favorOf(id);
-      let badge = card.querySelector('.favor-badge');
-      if (v > 0){
-        if (!badge){
-          badge = document.createElement('span');
-          badge.className = 'favor-badge';
-          card.appendChild(badge);
-        }
-        badge.textContent = '❤ ' + favorRank(v);
-      } else if (badge){
-        badge.remove();
-      }
-    });
+  /* ===== 点击角色说悄悄话 ===== */
+  function bubbleSay(card, c){
+    const pool = [c.quote].concat(Object.keys(c.lines).map(k => c.lines[k]));
+    const line = pool[Math.floor(Math.random() * pool.length)];
+    let bub = card.querySelector('.bubble');
+    if (!bub){
+      bub = document.createElement('div');
+      bub.className = 'bubble';
+      card.appendChild(bub);
+    }
+    bub.textContent = line;
+    bub.classList.remove('show');
+    void bub.offsetWidth;
+    bub.classList.add('show');
+    clearTimeout(bub._t);
+    bub._t = setTimeout(() => bub.classList.remove('show'), 2400);
   }
   /* ===== 点击星光粒子特效 ===== */
   function sparkle(e){
